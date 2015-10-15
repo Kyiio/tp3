@@ -2,6 +2,12 @@
 #define GAMEWINDOW_H
 
 #include "openglwindow.h"
+#include "Camera.h"
+
+#define ETE 0
+#define AUTOMNE 1
+#define HIVER 2
+#define PRINTEMPS 3
 
 
 struct point
@@ -9,12 +15,19 @@ struct point
     float x, y ,z;
 };
 
+#define MAX_PARTICLES 10000
 
+typedef struct
+{
+    float x;
+    float y;
+    float z;
+} tParticle1;
 
 class GameWindow : public OpenGLWindow
 {
 public:
-    GameWindow();
+    GameWindow(int fps, Camera* camera, int type);
 
     void initialize();
     void render();
@@ -29,22 +42,28 @@ public:
     void displayTrianglesTexture();
 
     void displayColor(float);
+    void displayColorSeasons(float);
 
     void loadMap(QString localPath);
 
-private:
+    void initall();
+    void initentity(int index);
+    void renderMeteo();
+    void update();
 
+protected:
+
+    tParticle1 Particles[MAX_PARTICLES];
+    int m_type;
+
+    Camera* m_camera;
     int m_frame;
     QImage m_image;
     point *p;
-
-
     int carte=1;
-
-    int etat = 0;
-    float rotX = -45.0;
-    float rotY = -45.0;
-    float ss = 1.0f;
+    bool m_isRotating;
+    QTimer * m_timer;
+    int m_fps;
 
 };
 

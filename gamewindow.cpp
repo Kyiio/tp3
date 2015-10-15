@@ -14,17 +14,23 @@
 
 #include <QtCore>
 #include <QtGui>
+
 using namespace std;
 
-
-GameWindow::GameWindow()
+GameWindow::GameWindow(int fps, Camera* camera, int type)
 {
+    m_type = type;
+    m_fps = fps;
+    m_isRotating = false;
+    m_timer = new QTimer(this);
+    m_timer->connect(m_timer, SIGNAL(timeout()),this, SLOT(renderNow()));
+    m_timer->start(1000/fps);
+    m_camera = camera;
 }
 
 void GameWindow::initialize()
 {
     const qreal retinaScale = devicePixelRatio();
-
 
     glViewport(0, 0, width() * retinaScale, height() * retinaScale);
 
@@ -33,8 +39,10 @@ void GameWindow::initialize()
     glLoadIdentity();
     glOrtho(-1.0, 1.0, -1.0, 1.0, -100.0, 100.0);
 
+    loadMap(":/heightmap-2.png");
 
-    loadMap(":/heightmap-1.png");
+    if(m_type == HIVER || m_type == AUTOMNE)
+        initall();
 
 }
 
@@ -44,7 +52,6 @@ void GameWindow::loadMap(QString localPath)
     if (QFile::exists(localPath)) {
         m_image = QImage(localPath);
     }
-
 
     uint id = 0;
     p = new point[m_image.width() * m_image.height()];
@@ -67,16 +74,22 @@ void GameWindow::loadMap(QString localPath)
 
 void GameWindow::render()
 {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glClear(GL_COLOR_BUFFER_BIT);
-
+    if(m_isRotating)
+        m_camera->set_rotY(m_camera->get_rotY() + 1.0f);
 
     glLoadIdentity();
-   glScalef(ss,ss,ss);
-    glRotatef(rotX,1.0f,0.0f,0.0f);
-    glRotatef(rotY,0.0f,0.0f,1.0f);
+    m_camera->scale();
+    glRotatef(m_camera->get_rotX(),1.0f,0.0f,0.0f);
+    glRotatef(m_camera->get_rotY(),0.0f,0.0f,1.0f);
 
-    switch(etat)
+    if(m_type == HIVER || m_type == AUTOMNE){
+        renderMeteo();
+        update();
+    }
+
+    switch(m_camera->get_etat())
     {
     case 0:
         displayPoints();
@@ -124,28 +137,51 @@ void GameWindow::keyPressEvent(QKeyEvent *event)
 {
     switch(event->key())
     {
+    case 'C':
+    {
+        m_isRotating = !m_isRotating;
+        break;
+    }
+    case 'P':
+    {
+        if(m_fps < 1000){
+            m_timer->stop();
+            m_fps *= 2;
+            m_timer->start(1000/m_fps);
+        }
+        break;
+    }
+    case 'M':
+    {
+        if(m_fps >= 2){
+            m_timer->stop();
+            m_fps /= 2;
+            m_timer->start(1000/m_fps);
+        }
+        break;
+    }
     case 'Z':
-        ss += 0.10f;
+        m_camera->set_ss(m_camera->get_ss()+0.10f);
         break;
     case 'S':
-        ss -= 0.10f;
+        m_camera->set_ss(m_camera->get_ss()-0.10f);
         break;
     case 'A':
-        rotX += 1.0f;
+        m_camera->set_rotX(m_camera->get_rotX()+1.0f);
         break;
     case 'E':
-        rotX -= 1.0f;
+        m_camera->set_rotX(m_camera->get_rotX()-1.0f);
         break;
     case 'Q':
-        rotY += 1.0f;
+        m_camera->set_rotY(m_camera->get_rotY()+1.0f);
         break;
     case 'D':
-        rotY -= 1.0f;
+        m_camera->set_rotY(m_camera->get_rotY()-1.0f);
         break;
     case 'W':
-        etat ++;
-        if(etat > 5)
-            etat = 0;
+        m_camera->set_etat(m_camera->get_etat()+1);
+        if(m_camera->get_etat() > 5)
+            m_camera->set_etat(0);
         break;
     case 'X':
         carte ++;
@@ -157,8 +193,65 @@ void GameWindow::keyPressEvent(QKeyEvent *event)
 
         loadMap(depth);
         break;
+
     }
-    renderNow();
+    //renderNow();
+}
+
+
+void GameWindow::initall()
+{
+
+    srand(time(NULL));
+    for(int i = 0; i < MAX_PARTICLES; i++)
+    {
+        Particles[i].x = (-0.5f) + ((float)(rand())/ (float)(RAND_MAX));
+        Particles[i].y = (-0.5f) + ((float)(rand())/ (float)(RAND_MAX));
+        Particles[i].z = ((float)(rand())/ (float)(RAND_MAX));
+    }
+}
+
+void GameWindow::initentity(int index)
+{
+    Particles[index].x = (-0.5f) + ((float)(rand())/ (float)(RAND_MAX));
+    Particles[index].y = (-0.5f) + ((float)(rand())/ (float)(RAND_MAX));
+    Particles[index].z = ((float)(rand())/ (float)(RAND_MAX));
+}
+
+void GameWindow::renderMeteo()
+{
+    glBegin(GL_POINTS);
+
+    if(m_type == HIVER)
+        glColor3f(1.0f,1.0f,1.0f);
+    else//automne
+        glColor3f(44.0f/255.0f,117.0f/255.0f,1.0f);
+
+    for(int i = 0; i < MAX_PARTICLES; i++)
+    {
+        glVertex3f(Particles[i].x, Particles[i].y, Particles[i].z);
+    }
+    glEnd();
+}
+
+void GameWindow::update()
+{
+    for(int i = 0; i < MAX_PARTICLES; i++)
+    {
+
+       if(m_type == AUTOMNE)
+            Particles[i].z -= ((float)(rand())/(float)(RAND_MAX)) * 0.15f;
+       else{//hiver
+            Particles[i].z -= ((float)(rand())/(float)(RAND_MAX))* 0.025f;
+            //Particles[i].x += ((float)(rand())/(float)(RAND_MAX));
+            //Particles[i].y += ((float)(rand())/(float)(RAND_MAX));
+        }
+
+        if(Particles[i].z < 0)
+        {
+            initentity(i);
+        }
+    }
 }
 
 
@@ -171,6 +264,7 @@ void GameWindow::displayPoints()
     {
         for(int j = 0; j < m_image.height(); j++)
         {
+            displayColorSeasons(p[id].z);
             id = i*m_image.width() +j;
             glVertex3f(
                         p[id].x,
@@ -181,7 +275,6 @@ void GameWindow::displayPoints()
     }
     glEnd();
 }
-
 
 void GameWindow::displayTriangles()
 {
@@ -367,19 +460,23 @@ void GameWindow::displayTrianglesTexture()
         {
 
             id = i*m_image.width() +j;
-            displayColor(p[id].z);
+            //displayColor(p[id].z);
+            displayColorSeasons(p[id].z);
+
             glVertex3f(
                         p[id].x,
                         p[id].y,
                         p[id].z);
             id = i*m_image.width() +(j+1);
-            displayColor(p[id].z);
+            //displayColor(p[id].z);
+            displayColorSeasons(p[id].z);
             glVertex3f(
                         p[id].x,
                         p[id].y,
                         p[id].z);
             id = (i+1)*m_image.width() +j;
-            displayColor(p[id].z);
+            //displayColor(p[id].z);
+            displayColorSeasons(p[id].z);
             glVertex3f(
                         p[id].x,
                         p[id].y,
@@ -388,19 +485,22 @@ void GameWindow::displayTrianglesTexture()
 
 
             id = i*m_image.width() +(j+1);
-            displayColor(p[id].z);
+            //displayColor(p[id].z);
+            displayColorSeasons(p[id].z);
             glVertex3f(
                         p[id].x,
                         p[id].y,
                         p[id].z);
             id = (i+1)*m_image.width() +j+1;
-            displayColor(p[id].z);
+            //displayColor(p[id].z);
+            displayColorSeasons(p[id].z);
             glVertex3f(
                         p[id].x,
                         p[id].y,
                         p[id].z);
             id = (i+1)*m_image.width() +j;
-            displayColor(p[id].z);
+            //displayColor(p[id].z);
+            displayColorSeasons(p[id].z);
             glVertex3f(
                         p[id].x,
                         p[id].y,
@@ -413,6 +513,44 @@ void GameWindow::displayTrianglesTexture()
 
 void GameWindow::displayColor(float alt)
 {
+
+    float R;
+    float G;
+    float B;
+
+    if(alt > 0.15f){//blanc
+       R = 1.0f;
+       G = 1.0f;
+       B = 1.0f;
+    }
+    else if (alt > 0.08f){//marron
+        R = 88.0f/255.0f;
+        G = 41.0f/255.0f;
+        B = 0.0f;
+    }
+    else if (alt > 0.04f){//vert
+        R = 20.0f/255.0f;
+        G = 148.0f/255.0f;
+        B = 20.0f/255.0f;
+    }
+    else if (alt > 0.030f){//jaune
+        R = 255.0f/255.0f;
+        G = 222.0f/255.0f;
+        B = 117.0f/255.0f;
+    }
+    else if (alt > 0.015f){//bleu clair
+        R = 44.0f/255.0f;
+        G = 117.0f/255.0f;
+        B = 1.0f;
+    }
+    else{//bleu foncé
+        R = 15.0f/255.0f;
+        G = 5.0f/255.0f;
+        B = 107.0f/255.0f;
+    }
+
+    glColor3f(R, G, B);
+ /*
     if (alt > 0.2)
     {
         glColor3f(01.0f, 1.0f, 1.0f);
@@ -429,5 +567,123 @@ void GameWindow::displayColor(float alt)
     {
         glColor3f(0.0f, 0.0f, 1.0f);
     }
+*/
+}
+
+void GameWindow::displayColorSeasons(float alt)
+{
+    float R;
+    float G;
+    float B;
+
+    if(m_type == ETE){
+
+        if (alt > 0.08f){//marron
+            R = 143.0f/255.0f;
+            G = 89.0f/255.0f;
+            B = 34.0f/255.0f;
+        }
+        else if (alt > 0.04f){//vert
+            R = 20.0f/255.0f;
+            G = 148.0f/255.0f;
+            B = 20.0f/255.0f;
+        }
+        else if (alt > 0.020f){//jaune
+            R = 255.0f/255.0f;
+            G = 222.0f/255.0f;
+            B = 117.0f/255.0f;
+        }
+        else {//bleu clair
+            R = 44.0f/255.0f;
+            G = 117.0f/255.0f;
+            B = 1.0f;
+        }
+    }
+    else if(m_type == AUTOMNE){
+
+        if (alt > 0.08f){//marron
+            R = 88.0f/255.0f;
+            G = 41.0f/255.0f;
+            B = 0.0f;
+        }
+        else if (alt > 0.04f){//vert
+            R = 20.0f/255.0f;
+            G = 148.0f/255.0f;
+            B = 20.0f/255.0f;
+        }
+        else if (alt > 0.030f){//orange
+            R = 223.0f/255.0f;
+            G = 120.0f/255.0f;
+            B = 20.0f/255.0f;
+        }
+        else if (alt > 0.025f){//bleu clair
+            R = 44.0f/255.0f;
+            G = 117.0f/255.0f;
+            B = 1.0f;
+        }
+        else{//bleu foncé
+            R = 15.0f/255.0f;
+            G = 5.0f/255.0f;
+            B = 107.0f/255.0f;
+        }
+    }
+    else if(m_type == HIVER){
+
+        if(alt > 0.15f){//blanc
+           R = 1.0f;
+           G = 1.0f;
+           B = 1.0f;
+        }
+        else if (alt > 0.08f){//marron
+            R = 88.0f/255.0f;
+            G = 41.0f/255.0f;
+            B = 0.0f;
+        }
+        else if (alt > 0.04f){//blanc
+            R = 1.0f;
+            G = 1.0f;
+            B = 1.0f;
+        }
+        else if (alt > 0.015f){//bleu clair
+            R = 44.0f/255.0f;
+            G = 117.0f/255.0f;
+            B = 1.0f;
+        }
+        else{//bleu foncé
+            R = 15.0f/255.0f;
+            G = 5.0f/255.0f;
+            B = 107.0f/255.0f;
+        }
+    }
+    else{//PRINTEMPS
+
+        if(alt > 0.2f){//blanc
+           R = 1.0f;
+           G = 1.0f;
+           B = 1.0f;
+        }
+        else if (alt > 0.08f){//marron
+            R = 88.0f/255.0f;
+            G = 41.0f/255.0f;
+            B = 0.0f;
+        }
+        else if (alt > 0.03f){//vert
+            R = 20.0f/255.0f;
+            G = 148.0f/255.0f;
+            B = 20.0f/255.0f;
+        }
+        else if (alt > 0.015f){//bleu clair
+            R = 44.0f/255.0f;
+            G = 117.0f/255.0f;
+            B = 1.0f;
+        }
+        else{//bleu foncé
+            R = 15.0f/255.0f;
+            G = 5.0f/255.0f;
+            B = 107.0f/255.0f;
+        }
+    }
+
+    glColor3f(R, G, B);
 
 }
